@@ -3,6 +3,7 @@ import typer
 import redis
 from concurrent.futures import ThreadPoolExecutor
 from funasr import AutoModel
+from funasr.utils.postprocess_utils import rich_transcription_postprocess
 
 app = typer.Typer()
 
@@ -13,7 +14,7 @@ REDIS_DB = 0
 MODEL_DIR = "models"
 MAX_WORKERS = 2  # 最大并发处理数量
 
-os.environ["MODELSCOPE_CACHE"] = os.path.dirname(os.path.abspath(__file__)) # 设置模型缓存路径
+os.environ["MODELSCOPE_CACHE"] = os.path.dirname(os.path.abspath(__file__))  # 设置模型缓存路径
 
 # ffmpeg配置
 FFMPEG_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "ffmpeg.exe")
@@ -40,6 +41,8 @@ def download_model():
         # 初始化模型会自动下载
         AutoModel(
             model="paraformer-zh",
+            vad_model="fsmn-vad",
+            punc_model="ct-punc",
             device="cuda" if torch.cuda.is_available() else "cpu",
             ffmpeg_path=FFMPEG_PATH
         )
@@ -57,7 +60,10 @@ def process_audio(task_id: str, file_path: str, model):
 
         # 执行语音识别
         result = model.generate(input=file_path)
-        text_result = result[0]['text']
+        text = rich_transcription_postprocess(result[0]["text"])
+
+        print(text)
+        text_result = text
 
         # 更新任务状态和结果
         redis_client.hmset(f"task:{task_id}", {
@@ -80,8 +86,11 @@ def start_worker():
     """启动工作进程"""
     print("Initializing ASR model...")
     model = AutoModel(
-        model="paraformer-zh",
-        model_dir=MODEL_DIR,
+        model=f"{os.path.dirname(os.path.abspath(__file__))}/models/iic/speech_seaco_paraformer_large_asr_nat-zh-cn"
+              f"-16k-common-vocab8404-pytorch",
+        disable_update=True,
+        punc_model=f"{os.path.dirname(os.path.abspath(__file__))}/models/iic/punc_ct-transformer_cn-en-common-vocab471067-large",
+        vad_model=f"{os.path.dirname(os.path.abspath(__file__))}/models/iic/speech_fsmn_vad_zh-cn-16k-common-pytorch",
         device="cuda" if torch.cuda.is_available() else "cpu",
         ffmpeg_path=FFMPEG_PATH
     )
