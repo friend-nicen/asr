@@ -1,10 +1,10 @@
 import os
 import uuid
 from typing import Optional
-from fastapi import FastAPI, UploadFile, HTTPException
+from fastapi import FastAPI, HTTPException, Query
 from pydantic import BaseModel
 import aiofiles
-import redis
+from redis import asyncio as aioredis
 import requests
 from urllib.parse import urlparse
 
@@ -20,7 +20,7 @@ AUDIO_DIR = "audio"
 os.makedirs(AUDIO_DIR, exist_ok=True)
 
 # Redis客户端
-redis_client = redis.Redis(
+redis_client = aioredis.Redis(
     host=REDIS_HOST,
     port=REDIS_PORT,
     db=REDIS_DB,
@@ -93,8 +93,8 @@ async def recognize_audio(request: AudioRecognitionRequest):
 
 
 @app.get("/status/{task_id}", response_model=TaskStatus)
-def get_task_status(task_id: str):
-    task_data = redis_client.hgetall(f"task:{task_id}")
+async def get_task_status(task_id: str):
+    task_data = await redis_client.hgetall(f"task:{task_id}")
     if not task_data:
         raise HTTPException(status_code=404, detail="Task not found")
 
